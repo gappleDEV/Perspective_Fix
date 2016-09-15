@@ -27,24 +27,36 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 
+import Jama.Matrix;
+import Jama.SingularValueDecomposition;
+
 @SuppressWarnings("serial")
 public class View extends JFrame implements MouseListener
 {
 	
-	double[] x = {-1,-1,-1,-1}; //original point x coordinate
-	double[] y = {-1,-1,-1,-1}; //original point y coordinate
+	double[] x = new double[5]; //original point x coordinate
+	double[] y = new double[5]; //original point y coordinate
 	
-	double[] xp = {-1,-1,-1,-1}; //x prime; new point x coordinate
-	double[] yp = {-1,-1,-1,-1}; //y prime; new point y coordinate
-	
-	double[][] A = new double[3][3];
-	double[][] Ai = new double[3][3]; //inverse of A
+	double[] xp = new double[5]; //x prime; new point x coordinate
+	double[] yp = new double[5]; //y prime; new point y coordinate
 	
 	double[][] B = new double[3][3];
 	
 	boolean wantDots = true;
+	boolean horizonalOutput = true;
+	boolean compactOutput = false;
+	boolean inverseWarping = true;
+	
+	Matrix A1; //A sub matrices corresponding to (xi, yi)
+	Matrix A2;
+	Matrix A3;
+	Matrix A4;
+	Matrix A5;
+	
+	Matrix A; //combines the previous Ai matrices
 	
 	Matrix H; //homography matrix
+	Matrix Hinv; //inverse of H
 	
 	int count = -1;
 	String imgName;
@@ -56,6 +68,25 @@ public class View extends JFrame implements MouseListener
 		this.imgName = imgName;
 	}
 	
+	public String print2DArray(double[][] arr)
+	{
+		String toRet = "";
+		for(int i = 0; i < arr.length; i++)
+		{
+			toRet += "[";
+			for(int j = 0; j < arr[0].length; j++)
+			{
+				toRet += arr[i][j];
+				if(j != arr[0].length - 1)//will run again
+				{
+					toRet += "\t";
+				}
+			}
+			toRet+= "]\n";
+		}
+		return toRet;
+	}
+	
 	@Override
 	public void paint(Graphics g)
 	{
@@ -65,7 +96,7 @@ public class View extends JFrame implements MouseListener
 			for(int i = 0; count > -1 && i <= count; i++)
 			{
 				g.setColor(Color.GREEN);
-				g.fillOval((int)x[i] - 10, (int)y[i] - 10, 20, 20);
+				g.fillOval((int)x[i] - 5, (int)y[i] - 5, 10, 10);
 			}
 		}
 	}
@@ -90,128 +121,214 @@ public class View extends JFrame implements MouseListener
 		this.setVisible(true);
 		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		
-		JOptionPane.showMessageDialog(null, "Use the following order:\n1) bottom left corner -> 2) bottom right corner -> 3) top right corner -> 4) top left corner");
+		JOptionPane.showMessageDialog(null, "Use the following order:\n1) bottom left corner -> 2) bottom right corner -> 3) top right corner -> 4) top left corner -> 5) center point");
 
 	}
 	
 	//Calculates the corresponding points
 	public void calculateNewPoints()
 	{
-		//Find the middle between the points that are meant to have the same x coordinates
-		xp[0] = (x[0] + x[3]) / 2;
-		xp[3] = x[0];
-		xp[1] = (x[1] + x[2]) / 2;
-		xp[2] = xp[1];
-		
-		//Find the middle between the points that are meant to have the same x coordinates
-		yp[0] = (y[0] + y[1]) / 2;
-		yp[1] = yp[0];
-		yp[2] = (y[2] + y[3]) / 2;
-		yp[3] = yp[2];
+		System.out.println("Image width = " + myimg.getWidth());
+		System.out.println("Image height = " + myimg.getHeight());
+		if(horizonalOutput)
+		{
+			//Horizonal court
+			if(compactOutput)
+			{
+				//Find the middle between the points that are meant to have the same x coordinates
+				xp[0] = (x[0] + x[1]) / 2;
+				xp[1] = xp[0];
+				xp[2] = (x[2] + x[3]) / 2;
+				xp[3] = xp[2];
+				xp[4] = (xp[2] + xp[1]) / 2;
+					
+				//Find the middle between the points that are meant to have the same x coordinates
+				yp[0] = (y[0] + y[3]) / 2;
+				yp[3] = yp[0];
+				yp[1] = (y[1] + y[2]) / 2;
+				yp[2] = yp[1];
+				yp[4] = (yp[1] + yp[0]) / 2;
+			}
+			else
+			{
+				//tries for a larger output image
+				//Ideal for most visible output
+				xp[0] = xp[1] = Math.min(x[0], x[1]);
+				xp[2] = xp[3] = (x[2] + x[3]) / 2;
+				xp[4] = (xp[2] + xp[1]) / 2;
+				
+				yp[0] = yp[3] = Math.min(y[0], y[3]);
+				yp[1] = yp[2] = Math.max(y[1], y[2]);
+				yp[4] = (yp[1] + yp[0]) / 2;
+			}
+		}
+		else
+		{
+			//Vertical court
+			if(compactOutput)
+			{
+				//Find the middle between the points that are meant to have the same x coordinates
+				xp[0] = (x[0] + x[3]) / 2;
+				xp[3] = xp[0];
+				xp[1] = (x[1] + x[2]) / 2;
+				xp[2] = xp[1];
+				xp[4] = (xp[1] + xp[0]) / 2;
+				
+				//Find the middle between the points that are meant to have the same x coordinates
+				yp[0] = (y[0] + y[1]) / 2;
+				yp[1] = yp[0];
+				yp[2] = (y[2] + y[3]) / 2;
+				yp[3] = yp[2];
+				yp[4] = (yp[3] + yp[0]) / 2;
+			}
+			else
+			{
+				//tries for a larger output image
+				//Ideal for most visible output
+				xp[0] = xp[3] = (x[0] + x[3]) / 2;
+				xp[1] = xp[2] = Math.max(x[1], x[2]);
+				xp[4] = (xp[1] + xp[0]) / 2;
+				
+				yp[0] = yp[1] = Math.max(y[0], y[1]);
+				yp[2] = yp[3] = Math.min(y[2], y[3]);
+				yp[4] = (yp[3] + yp[0]) / 2;
+			}
+		}
 		
 		System.out.println("New point 1: (" + xp[0] + "," + yp[0] + ")");
 		System.out.println("New point 2: (" + xp[1] + "," + yp[1] + ")");
 		System.out.println("New point 3: (" + xp[2] + "," + yp[2] + ")");
 		System.out.println("New point 4: (" + xp[3] + "," + yp[3] + ")");
+		System.out.println("New point 5: (" + xp[4] + "," + yp[4] + ")");
 		
-		fillMatrixA();
-	}
-	
-	//-------- The following two functions are basically identical, but have been made into 2 functions to make tracing easier
-	//The following are simplifications found from http://math.stackexchange.com/questions/296794/finding-the-transform-matrix-from-4-projected-points-with-javascript
-	
-	//New attempt with Cramer's Rule
-	
-	//Fills matrix A
-	public void fillMatrixA()
-	{
-		/*double t = ((x[3] - x[0]) - (y[3] - y[0])*(x[1] - x[0])/(y[1] - y[0]));
-		double u = (y[3] - y[0])/(y[1] - y[0]) - (y[2] - y[0]) * t;
-		double l = 1 - u - t;*/
+		A1 = new Matrix(fillMatrixAi(0));
+		A2 = new Matrix(fillMatrixAi(1));
+		A3 = new Matrix(fillMatrixAi(2));
+		A4 = new Matrix(fillMatrixAi(3));
+		A5 = new Matrix(fillMatrixAi(4));
 		
-		double delta = x[0]*(y[1] - y[2]) - y[0]*(x[1] - x[2]) + (x[1]*y[2] - y[1]*x[2]);
+		System.out.println("Matrix A1:\n" + print2DArray(A1.getArray()));
+		System.out.println("Matrix A2:\n" + print2DArray(A2.getArray()));
+		System.out.println("Matrix A3:\n" + print2DArray(A3.getArray()));
+		System.out.println("Matrix A4:\n" + print2DArray(A4.getArray()));
+		System.out.println("Matrix A5:\n" + print2DArray(A5.getArray()));
 		
-		double l = x[3]*(y[1] - y[2]) - y[3]*(x[1] - x[2]) + (x[1]*y[2] - y[1]*x[2]);
-		l = l / delta;
-		double u = x[0]*(y[3] - y[2]) - y[0]*(x[3] - x[2]) + (x[3]*y[2] - y[3]*x[2]);
-		u = u / delta;
-		double t = x[0]*(y[1] - y[3]) - y[0]*(x[1] - x[3]) + (x[1]*y[3] - y[1]*x[3]);
-		t = t / delta;
-		
-		A[0][0] = l * x[0];
-		A[1][0] = l * y[0];
-		A[2][0] = l;
-		
-		A[0][1] = u * x[1];
-		A[1][1] = u * y[1];
-		A[2][1] = u;
-		
-		A[0][2] = t * x[2];
-		A[1][2] = t * y[2];
-		A[2][2] = t;
-		
-		fillMatrixB();
-	}
-	
-	//Fills matrix B
-	public void fillMatrixB()
-	{
-		/*double t = ((xp[3] - xp[0]) - (yp[3] - yp[0])*(xp[1] - xp[0])/(yp[1] - yp[0]));
-		double u = (yp[3] - yp[0])/(yp[1] - yp[0]) - (yp[2] - yp[0]) * t;
-		double l = 1 - u - t;*/
-		
-		double delta = xp[0]*(yp[1] - yp[2]) - yp[0]*(xp[1] - xp[2]) + (xp[1]*yp[2] - yp[1]*xp[2]);
-		
-		double l = xp[3]*(yp[1] - yp[2]) - yp[3]*(xp[1] - xp[2]) + (xp[1]*yp[2] - yp[1]*xp[2]);
-		l = l / delta;
-		double u = xp[0]*(yp[3] - yp[2]) - yp[0]*(xp[3] - xp[2]) + (xp[3]*yp[2] - yp[3]*xp[2]);
-		u = u / delta;
-		double t = xp[0]*(yp[1] - yp[3]) - yp[0]*(xp[1] - xp[3]) + (xp[1]*yp[3] - yp[1]*xp[3]);
-		t = t / delta;
-		
-		System.out.println("t: " + t + "\nu: " + u + "\nl: " + l);
-		
-		B[0][0] = l * xp[0];
-		B[1][0] = l * yp[0];
-		B[2][0] = l;
-		
-		B[0][1] = u * xp[1];
-		B[1][1] = u * yp[1];
-		B[2][1] = u;
-		
-		B[0][2] = t * xp[2];
-		B[1][2] = t * yp[2];
-		B[2][2] = t;
-		
-		getInverseA();
-	}
-	//-----------------------------------------------------------------------------------------------------------------------
-
-	//Get inverse of A
-	public void getInverseA()
-	{
-		Matrix a = new Matrix(A);
-		System.out.println("Matrix A:\n" + a);
-		Matrix ai = a.getInverse();
-		Ai = ai.getDoubleArray();
-		System.out.println("Matrix A inverse:\n" + ai);
-		
-		System.out.println("Matrix B:\n" + (new Matrix(B)));
-		
+		fillA();
 		getHomography();
+		createNewImage();
 	}
 	
-	//Calculate the homography matrix
+	public double[][] fillMatrixAi(int i)
+	{
+		double[][] mat = new double[2][9];
+		
+		mat[0][0] = 0;
+		mat[0][1] = 0;
+		mat[0][2] = 0;
+		mat[0][3] = -1 * x[i];
+		mat[0][4] = -1 * y[i];
+		mat[0][5] = -1;
+		mat[0][6] = yp[i]*x[i];
+		mat[0][7] = yp[i]*y[i];
+		mat[0][8] = yp[i];
+		
+		mat[1][0] = x[i];
+		mat[1][1] = y[i];
+		mat[1][2] = 1;
+		mat[1][3] = 0;
+		mat[1][4] = 0;
+		mat[1][5] = 0;
+		mat[1][6] = -1*xp[i]*x[i];
+		mat[1][7] = -1*xp[i]*y[i];
+		mat[1][8] = -1*xp[i];
+		
+		return mat;
+	}
+	
+	public void fillA()
+	{
+		double[][] fullA = new double[10][9];
+		
+		//Put in A1
+		for(int i = 0; i < 2; i++)
+		{
+			for(int j = 0; j < 9; j++)
+			{
+				fullA[i][j] = A1.getArray()[i][j];
+			}
+		}
+		
+		//Put in A2
+		for(int i = 0; i < 2; i++)
+		{
+			for(int j = 0; j < 9; j++)
+			{
+				fullA[i+2][j] = A2.getArray()[i][j];
+			}
+		}
+		
+		//Put in A3
+		for(int i = 0; i < 2; i++)
+		{
+			for(int j = 0; j < 9; j++)
+			{
+				fullA[i+4][j] = A3.getArray()[i][j];
+			}
+		}
+		
+		//Put in A4
+		for(int i = 0; i < 2; i++)
+		{
+			for(int j = 0; j < 9; j++)
+			{
+				fullA[i+6][j] = A4.getArray()[i][j];
+			}
+		}
+		
+		//Put in A5
+		for(int i = 0; i < 2; i++)
+		{
+			for(int j = 0; j < 9; j++)
+			{
+				fullA[i+8][j] = A5.getArray()[i][j];
+			}
+		}
+		
+		A = new Matrix(fullA);
+		
+		System.out.println("Matrix A:\n" + print2DArray(A.getArray()));
+	}
+	
 	public void getHomography()
 	{
-		Matrix ai = new Matrix(Ai);
-		Matrix b = new Matrix(B);
+		SingularValueDecomposition s = A.svd();
 		
-		H = b.dotProduct(ai);
+		Matrix V = s.getV();
 		
-		System.out.println("Matrix H:\n" + H);
+		System.out.println("Matrix V:\n" + print2DArray(V.getArray()));
 		
-		createNewImage();
+		double[][] temp = new double[9][1];
+		
+		for(int i = 0; i < 9; i++)
+		{
+			temp[i][0] = V.getArray()[i][8];
+		}
+		
+		double[][] realH = new double[3][3];
+		int tIndex = 0;
+		for(int i = 0; i < 3; i++)
+		{
+			for(int j = 0; j < 3; j++)
+			{
+				realH[i][j] = temp[tIndex++][0];
+			}
+		}
+		
+		H = new Matrix(realH);
+		Hinv = H.inverse();
+		
+		System.out.println("Matrix H:\n" + print2DArray(H.getArray()));
+		
 	}
 	
 	public void createNewImage()
@@ -220,31 +337,64 @@ public class View extends JFrame implements MouseListener
 		int imgHeight = myimg.getHeight();
 		BufferedImage img = new BufferedImage(imgWidth, imgHeight, myimg.getType());
 		
-		for(int x = 0; x < imgWidth; x++)
+		if(!inverseWarping)
 		{
-			for(int y = 0; y < imgHeight; y++)
+			for(int x = 0; x < imgWidth; x++)
 			{
-				Color atPixel = new Color(myimg.getRGB(x, y));
-				int r = atPixel.getRed();
-				int g = atPixel.getGreen();
-				int b = atPixel.getBlue();
-				int a = atPixel.getAlpha();
-				
-				int col = (a << 24) | (r << 16) | (g << 8) | b;
-				
-				double[][] p = {{x}, {y}, {1}};
-				Matrix point = new Matrix(p);
-				//System.out.println("Matrix for point (" + x + "," + y + "):\n" + point);
-				
-				Matrix homogPoint = H.dotProduct(point);
-				//System.out.println("Matrix for homogenous point:\n" + homogPoint);
-				double[][] np = homogPoint.getDoubleArray();
-				
-				int x11 = (int) (np[0][0] / np[2][0]);
-				int y11 = (int) (np[1][0] / np[2][0]);
-				
-				if(x11 > 0 && y11 > 0 && x11 < imgWidth && y11 < imgHeight)
-					img.setRGB(x11, y11, col);
+				for(int y = 0; y < imgHeight; y++)
+				{
+					Color atPixel = new Color(myimg.getRGB(x, y));
+					int r = atPixel.getRed();
+					int g = atPixel.getGreen();
+					int b = atPixel.getBlue();
+					int a = atPixel.getAlpha();
+					
+					int col = (a << 24) | (r << 16) | (g << 8) | b;
+					
+					double[][] p = {{x}, {y}, {1}};
+					Matrix point = new Matrix(p);
+					//System.out.println("Matrix for point (" + x + "," + y + "):\n" + point);
+					
+					Matrix homogPoint = H.times(point);
+					//System.out.println("Matrix for homogenous point:\n" + homogPoint);
+					double[][] np = homogPoint.getArray();
+					
+					int x11 = (int) (np[0][0] / np[2][0]);
+					int y11 = (int) (np[1][0] / np[2][0]);
+					
+					if(x11 > 0 && y11 > 0 && x11 < imgWidth && y11 < imgHeight)
+						img.setRGB(x11, y11, col);
+				}
+			}
+		}
+		else
+		{
+			//Inverse Warping
+			for(int x = 0; x < imgWidth; x++)
+			{
+				for(int y = 0; y < imgHeight; y++)
+				{
+					double[][] p = {{x}, {y}, {1}};
+					Matrix point = new Matrix(p);
+					
+					Matrix origPoint = Hinv.times(point);
+					
+					int x11 = (int) (origPoint.getArray()[0][0] / origPoint.getArray()[2][0]);
+					int y11 = (int) (origPoint.getArray()[1][0] / origPoint.getArray()[2][0]);
+					
+					if(x11 > 0 && y11 > 0 && x11 < imgWidth && y11 < imgHeight)
+					{
+						Color atPixel = new Color(myimg.getRGB(x11, y11));
+						int r = atPixel.getRed();
+						int g = atPixel.getGreen();
+						int b = atPixel.getBlue();
+						int a = atPixel.getAlpha();
+						
+						int col = (a << 24) | (r << 16) | (g << 8) | b;
+						
+						img.setRGB(x, y, col);
+					}
+				}
 			}
 		}
 		wantDots = false;
@@ -261,7 +411,7 @@ public class View extends JFrame implements MouseListener
 	@Override
 	public void mouseClicked(MouseEvent e) {
 		// TODO Auto-generated method stub
-		if(count < 3)
+		if(count < 4)
 		{
 			count++;
 			
@@ -272,7 +422,7 @@ public class View extends JFrame implements MouseListener
 			
 			repaint();
 			
-			if(count == 3)
+			if(count == 4)
 			{
 				System.out.println("Done gathering points");
 				calculateNewPoints();
